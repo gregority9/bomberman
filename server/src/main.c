@@ -18,7 +18,7 @@ on_sigint(int sig)
     g_running = 0;
 }
 
-/* Usypia watek na okreslona liczbe milisekund. */
+
 static void
 sleep_ms(long ms)
 {
@@ -45,10 +45,10 @@ main(int argc, char *argv[])
     signal(SIGINT, on_sigint);
     signal(SIGTERM, on_sigint);
 #ifdef SIGPIPE
-    signal(SIGPIPE, SIG_IGN);   /* ignoruj zerwane gniazda przy send() */
+    signal(SIGPIPE, SIG_IGN);   
 #endif
 
-    /* Inicjalizacja wspoldzielonych zasobow. */
+    
     game_init(&game);
     queue_init(&queue);
 
@@ -64,29 +64,29 @@ main(int argc, char *argv[])
 
     fprintf(stderr, "[serwer] glowna petla gry: %d tickow/s\n", 1000 / TICK_MS);
 
-    /* ---------------- GLOWNA PETLA GRY (tick-rate) ---------------- */
+    
     while (g_running) {
         Command cmd;
         int     len;
 
-        /* SEKCJA KRYTYCZNA: caly tick liczony pod jednym muteksem stanu gry. */
+        
         pthread_mutex_lock(&game.mutex);
 
-        /* 1. Pobierz i zastosuj wszystkie zalegle polecenia z kolejki. */
+        
         while (queue_pop(&queue, &cmd))
             game_apply_command(&game, &cmd);
 
-        /* 2. Przelicz logike: bomby, ogien, eliminacje, rundy. */
+        
         game_update(&game);
 
         pthread_mutex_unlock(&game.mutex);
 
-        /* 3. Serializacja i rozglaszanie stanu do wszystkich klientow. */
+        
         len = game_serialize(&game, state_buf, sizeof(state_buf));
         if (len > 0)
             server_broadcast(&srv, state_buf, len);
 
-        /* 4. Powiadomienia o zmianie fazy / komunikatach (np. zwyciezca). */
+        
         pthread_mutex_lock(&game.mutex);
         if (game.phase != last_phase ||
             strcmp(game.message, last_message) != 0) {

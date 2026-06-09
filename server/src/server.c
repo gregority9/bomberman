@@ -10,9 +10,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-/* --------------------------------------------------------------------------
- * Rejestr gniazd klientow (sekcja krytyczna: clients_mutex)
- * -------------------------------------------------------------------------- */
+
 
 static void
 register_client(Server *srv, int id, int fd)
@@ -38,25 +36,23 @@ server_broadcast(Server *srv, const char *msg, int len)
     pthread_mutex_lock(&srv->clients_mutex);
     for (i = 0; i < MAX_PLAYERS; i++) {
         if (srv->client_fd[i] >= 0) {
-            /* MSG_NOSIGNAL: nie zabijaj procesu gdy klient zerwal polaczenie. */
+            
             if (send(srv->client_fd[i], msg, len, MSG_NOSIGNAL) < 0) {
-                /* Watek klienta wykryje rozlaczenie przy recv i posprzata. */
+                
             }
         }
     }
     pthread_mutex_unlock(&srv->clients_mutex);
 }
 
-/* Wysyla pojedyncza wiadomosc do jednego gniazda. */
+
 static void
 send_line(int fd, const char *msg)
 {
     send(fd, msg, strlen(msg), MSG_NOSIGNAL);
 }
 
-/* --------------------------------------------------------------------------
- * Parsowanie komend od klienta
- * -------------------------------------------------------------------------- */
+
 
 static int
 parse_direction(const char *s, Direction *out)
@@ -68,13 +64,13 @@ parse_direction(const char *s, Direction *out)
     return 0;
 }
 
-/* Obsluga jednej linii polecenia. Zwraca 0 gdy klient ma sie rozlaczyc. */
+
 static int
 handle_line(Server *srv, int player_id, char *line)
 {
     Direction dir;
 
-    /* Usun konce linii. */
+    
     line[strcspn(line, "\r\n")] = '\0';
 
     if (strncmp(line, "MOVE ", 5) == 0) {
@@ -83,7 +79,7 @@ handle_line(Server *srv, int player_id, char *line)
             c.player_id = player_id;
             c.type      = CMD_MOVE;
             c.dir       = (int)dir;
-            queue_push(srv->queue, c);    /* do wspoldzielonej kolejki polecen */
+            queue_push(srv->queue, c);    
         }
     }
     else if (strncmp(line, "BOMB", 4) == 0) {
@@ -114,9 +110,7 @@ handle_line(Server *srv, int player_id, char *line)
     return 1;
 }
 
-/* --------------------------------------------------------------------------
- * Watek pojedynczego klienta
- * -------------------------------------------------------------------------- */
+
 
 static void *
 client_thread(void *arg)
@@ -134,13 +128,13 @@ client_thread(void *arg)
     free(ca);
     pthread_detach(pthread_self());
 
-    /* --- Faza dolaczenia: oczekiwanie na "JOIN <nazwa>" --- */
+    
     for (;;) {
         n = recv(fd, buf, sizeof(buf) - 1, 0);
         if (n <= 0) { close(fd); return NULL; }
         buf[n] = '\0';
 
-        /* Zbieraj do napotkania znaku konca linii. */
+        
         for (i = 0; i < n; i++) {
             if (buf[i] == '\n' || buf[i] == '\r') {
                 line[line_len] = '\0';
@@ -166,18 +160,18 @@ client_thread(void *arg)
             send_line(fd, welcome);
             break;
         }
-        /* Niepoprawna pierwsza linia - czekaj na kolejna. */
+        
         line_len = 0;
     }
 
     fprintf(stderr, "[serwer] gracz %d dolaczyl\n", player_id);
 
-    /* --- Petla odbioru komend (z buforowaniem niepelnych linii) --- */
+    
     line_len = 0;
     for (;;) {
         n = recv(fd, buf, sizeof(buf) - 1, 0);
         if (n <= 0)
-            break;                       /* rozlaczenie lub blad */
+            break;                       
         buf[n] = '\0';
 
         for (i = 0; i < n; i++) {
@@ -202,9 +196,7 @@ disconnect:
     return NULL;
 }
 
-/* --------------------------------------------------------------------------
- * Watek akceptujacy nowe polaczenia
- * -------------------------------------------------------------------------- */
+
 
 static void *
 accept_thread(void *arg)
@@ -240,9 +232,7 @@ accept_thread(void *arg)
     return NULL;
 }
 
-/* --------------------------------------------------------------------------
- * Inicjalizacja / uruchomienie / zamkniecie
- * -------------------------------------------------------------------------- */
+
 
 int
 server_init(Server *srv, GameState *game, CommandQueue *queue, int port)

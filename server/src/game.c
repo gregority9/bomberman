@@ -5,13 +5,11 @@
 #include <string.h>
 #include <time.h>
 
-/* Pozycje startowe graczy: cztery narozniki planszy. */
+
 static const int spawn_x[MAX_PLAYERS] = { 1, BOARD_W - 2, 1,            BOARD_W - 2 };
 static const int spawn_y[MAX_PLAYERS] = { 1, 1,           BOARD_H - 2,  BOARD_H - 2 };
 
-/* --------------------------------------------------------------------------
- * Pomocnicze
- * -------------------------------------------------------------------------- */
+
 
 static int
 in_bounds(int x, int y)
@@ -19,7 +17,7 @@ in_bounds(int x, int y)
     return x >= 0 && x < BOARD_W && y >= 0 && y < BOARD_H;
 }
 
-/* Czy w okolicy naroznika (zeby gracz mial pole manewru na starcie). */
+
 static int
 is_spawn_safe_zone(int x, int y)
 {
@@ -29,14 +27,14 @@ is_spawn_safe_zone(int x, int y)
         int dy = y - spawn_y[i];
         if (dx < 0) dx = -dx;
         if (dy < 0) dy = -dy;
-        /* Samo pole startowe oraz pola bezposrednio przylegle. */
+        
         if ((dx == 0 && dy <= 1) || (dy == 0 && dx <= 1))
             return 1;
     }
     return 0;
 }
 
-/* Znajduje indeks aktywnej bomby na danym polu lub -1. */
+
 static int
 find_bomb_at(GameState *g, int x, int y)
 {
@@ -48,7 +46,7 @@ find_bomb_at(GameState *g, int x, int y)
     return -1;
 }
 
-/* Czy na polu stoi zywy gracz (inny niz except_id). */
+
 static int
 player_at(GameState *g, int x, int y, int except_id)
 {
@@ -62,9 +60,7 @@ player_at(GameState *g, int x, int y, int except_id)
     return 0;
 }
 
-/* --------------------------------------------------------------------------
- * Generowanie planszy i restart rundy
- * -------------------------------------------------------------------------- */
+
 
 static void
 generate_board(GameState *g)
@@ -75,15 +71,15 @@ generate_board(GameState *g)
         for (x = 0; x < BOARD_W; x++) {
             g->fire[y][x] = 0;
 
-            /* Obramowanie planszy = sciany niezniszczalne. */
+            
             if (x == 0 || y == 0 || x == BOARD_W - 1 || y == BOARD_H - 1) {
                 g->board[y][x] = TILE_WALL;
             }
-            /* Filary co drugie pole (klasyczny uklad Bomberman). */
+            
             else if (x % 2 == 0 && y % 2 == 0) {
                 g->board[y][x] = TILE_WALL;
             }
-            /* Pozostale pola: losowo skrzynki, ale nie w strefach startowych. */
+            
             else if (!is_spawn_safe_zone(x, y) && (rand() % 100) < 75) {
                 g->board[y][x] = TILE_BOX;
             }
@@ -153,9 +149,7 @@ game_destroy(GameState *g)
     pthread_mutex_destroy(&g->mutex);
 }
 
-/* --------------------------------------------------------------------------
- * Zarzadzanie graczami (wlasne blokowanie muteksu)
- * -------------------------------------------------------------------------- */
+
 
 int
 game_add_player(GameState *g, const char *name)
@@ -168,8 +162,8 @@ game_add_player(GameState *g, const char *name)
         if (!g->players[i].connected) {
             Player *p = &g->players[i];
             p->connected    = 1;
-            p->ready        = 0;       /* w lobby trzeba oznaczyc gotowosc */
-            p->alive        = 0;       /* ozyje przy starcie rundy */
+            p->ready        = 0;       
+            p->alive        = 0;       
             p->x            = spawn_x[i];
             p->y            = spawn_y[i];
             p->active_bombs = 0;
@@ -213,9 +207,7 @@ game_count_connected(GameState *g)
     return n;
 }
 
-/* --------------------------------------------------------------------------
- * Stosowanie polecen (mutex trzymany przez wywolujacego)
- * -------------------------------------------------------------------------- */
+
 
 static void
 apply_move(GameState *g, int id, Direction dir)
@@ -238,11 +230,11 @@ apply_move(GameState *g, int id, Direction dir)
 
     if (!in_bounds(nx, ny))
         return;
-    if (g->board[ny][nx] != TILE_EMPTY)        /* sciana lub skrzynka blokuja */
+    if (g->board[ny][nx] != TILE_EMPTY)        
         return;
-    if (find_bomb_at(g, nx, ny) != -1)         /* aktywna bomba blokuje       */
+    if (find_bomb_at(g, nx, ny) != -1)         
         return;
-    if (player_at(g, nx, ny, id))              /* pole zajete przez gracza    */
+    if (player_at(g, nx, ny, id))              
         return;
 
     p->x = nx;
@@ -257,9 +249,9 @@ place_bomb(GameState *g, int id)
 
     if (!p->connected || !p->alive)
         return;
-    if (p->active_bombs >= p->max_bombs)       /* limit bomb - sekcja krytyczna */
+    if (p->active_bombs >= p->max_bombs)       
         return;
-    if (find_bomb_at(g, p->x, p->y) != -1)     /* juz jest tu bomba             */
+    if (find_bomb_at(g, p->x, p->y) != -1)     
         return;
 
     for (i = 0; i < MAX_BOMBS; i++) {
@@ -285,7 +277,7 @@ game_apply_command(GameState *g, const Command *cmd)
         return;
 
     switch (cmd->type) {
-        /* Komendy lobby - dzialaja tylko w fazie oczekiwania. */
+        
         case CMD_READY:
             if (g->phase == PHASE_WAITING)
                 g->players[id].ready = !g->players[id].ready;
@@ -294,7 +286,7 @@ game_apply_command(GameState *g, const Command *cmd)
             if (g->phase == PHASE_WAITING)
                 g->start_requested = 1;
             break;
-        /* Komendy rozgrywki - tylko w trakcie gry. */
+        
         case CMD_MOVE:
             if (g->phase == PHASE_PLAYING)
                 apply_move(g, id, (Direction)cmd->dir);
@@ -306,12 +298,9 @@ game_apply_command(GameState *g, const Command *cmd)
     }
 }
 
-/* --------------------------------------------------------------------------
- * Wybuchy
- * -------------------------------------------------------------------------- */
 
-/* Rozchodzi ogien z bomby b w czterech kierunkach. Bomby trafione fala sa
- * dopisywane do listy "to_explode" (lancuchowe wybuchy). */
+
+
 static void
 detonate(GameState *g, int bomb_idx, int *to_explode, int *to_explode_n)
 {
@@ -326,9 +315,9 @@ detonate(GameState *g, int bomb_idx, int *to_explode, int *to_explode_n)
 
     b->active = 0;
     if (g->players[b->owner].connected && g->players[b->owner].active_bombs > 0)
-        g->players[b->owner].active_bombs--;   /* zwolnienie licznika bomb */
+        g->players[b->owner].active_bombs--;   
 
-    /* Srodek wybuchu. */
+    
     g->fire[b->y][b->x] = FIRE_DURATION_TICKS;
 
     for (d = 0; d < 4; d++) {
@@ -339,17 +328,17 @@ detonate(GameState *g, int bomb_idx, int *to_explode, int *to_explode_n)
 
             if (!in_bounds(nx, ny))
                 break;
-            if (g->board[ny][nx] == TILE_WALL)         /* sciana zatrzymuje fale */
+            if (g->board[ny][nx] == TILE_WALL)         
                 break;
 
             g->fire[ny][nx] = FIRE_DURATION_TICKS;
 
-            if (g->board[ny][nx] == TILE_BOX) {         /* skrzynka: niszczona i stop */
+            if (g->board[ny][nx] == TILE_BOX) {         
                 g->board[ny][nx] = TILE_EMPTY;
                 break;
             }
 
-            other = find_bomb_at(g, nx, ny);            /* lancuchowy wybuch */
+            other = find_bomb_at(g, nx, ny);            
             if (other != -1 && *to_explode_n < MAX_BOMBS) {
                 to_explode[(*to_explode_n)++] = other;
             }
@@ -364,7 +353,7 @@ process_bombs(GameState *g)
     int n = 0;
     int i;
 
-    /* Odliczanie i kwalifikacja bomb do wybuchu w tym ticku. */
+    
     for (i = 0; i < MAX_BOMBS; i++) {
         if (g->bombs[i].active) {
             g->bombs[i].timer--;
@@ -373,7 +362,7 @@ process_bombs(GameState *g)
         }
     }
 
-    /* Przetwarzanie listy wybuchow z obsluga lancuchow (detonate dopisuje). */
+    
     for (i = 0; i < n; i++)
         detonate(g, to_explode[i], to_explode, &n);
 }
@@ -399,9 +388,7 @@ kill_players_in_fire(GameState *g)
     }
 }
 
-/* --------------------------------------------------------------------------
- * Logika rund
- * -------------------------------------------------------------------------- */
+
 
 static void
 check_round_end(GameState *g)
@@ -419,7 +406,7 @@ check_round_end(GameState *g)
         }
     }
 
-    /* Runda konczy sie gdy zostanie <= 1 zywy gracz (przy >=2 uczestnikach). */
+    
     if (alive <= 1) {
         g->phase           = PHASE_ROUNDOVER;
         g->roundover_timer = ROUNDOVER_TICKS;
@@ -431,7 +418,7 @@ check_round_end(GameState *g)
                      "Runde wygral gracz %d (%s)!",
                      last_alive, g->players[last_alive].name);
         } else {
-            g->last_winner = -1;             /* remis - nikt nie dostaje punktu */
+            g->last_winner = -1;             
             snprintf(g->message, sizeof(g->message), "Remis! Nikt nie przetrwal.");
         }
     }
@@ -456,7 +443,7 @@ game_update(GameState *g)
             }
         }
 
-        /* Start tylko na wyrazne zadanie (START) i gdy WSZYSCY sa gotowi. */
+        
         if (g->start_requested && connected >= MIN_PLAYERS && ready == connected) {
             game_reset_round(g);
         } else if (connected < MIN_PLAYERS) {
@@ -468,7 +455,7 @@ game_update(GameState *g)
                      "Lobby: gotowych %d/%d - oznacz gotowosc i nacisnij START",
                      ready, connected);
         }
-        g->start_requested = 0;     /* zadanie obowiazuje tylko w tym ticku */
+        g->start_requested = 0;     
         return;
     }
 
@@ -476,7 +463,7 @@ game_update(GameState *g)
         if (g->roundover_timer > 0)
             g->roundover_timer--;
         if (g->roundover_timer <= 0) {
-            /* Powrot do lobby: kazdy musi ponownie oznaczyc gotowosc. */
+            
             for (i = 0; i < MAX_PLAYERS; i++)
                 g->players[i].ready = 0;
             g->start_requested = 0;
@@ -487,16 +474,14 @@ game_update(GameState *g)
         return;
     }
 
-    /* PHASE_PLAYING: ruchy graczy zostaly juz zaaplikowane z kolejki polecen. */
-    age_fire(g);                 /* starzenie istniejacego ognia            */
-    process_bombs(g);            /* odliczanie i wybuchy (tworza nowy ogien) */
-    kill_players_in_fire(g);     /* eliminacja graczy stojacych w ogniu      */
-    check_round_end(g);          /* warunek konca rundy + punktacja          */
+    
+    age_fire(g);                 
+    process_bombs(g);            
+    kill_players_in_fire(g);     
+    check_round_end(g);          
 }
 
-/* --------------------------------------------------------------------------
- * Serializacja stanu (wlasne blokowanie muteksu)
- * -------------------------------------------------------------------------- */
+
 
 int
 game_serialize(GameState *g, char *buf, int buflen)
@@ -509,7 +494,7 @@ game_serialize(GameState *g, char *buf, int buflen)
 
     pthread_mutex_lock(&g->mutex);
 
-    /* Warstwa terenu. */
+    
     pos = 0;
     for (y = 0; y < BOARD_H; y++) {
         for (x = 0; x < BOARD_W; x++) {
@@ -521,7 +506,7 @@ game_serialize(GameState *g, char *buf, int buflen)
     }
     board[pos] = '\0';
 
-    /* Bomby. */
+    
     bombs[0] = '\0';
     pos = 0;
     for (i = 0; i < MAX_BOMBS; i++) {
@@ -534,7 +519,7 @@ game_serialize(GameState *g, char *buf, int buflen)
         }
     }
 
-    /* Ogien. */
+    
     fires[0] = '\0';
     pos = 0;
     for (y = 0; y < BOARD_H; y++) {
@@ -548,7 +533,7 @@ game_serialize(GameState *g, char *buf, int buflen)
         if (pos >= (int)sizeof(fires) - 1) break;
     }
 
-    /* Gracze. */
+    
     players[0] = '\0';
     pos = 0;
     for (i = 0; i < MAX_PLAYERS; i++) {

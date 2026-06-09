@@ -1,44 +1,18 @@
 #!/usr/bin/env python3
-"""
-Bombit - cienki klient (PyGame).
-
-Klient odpowiada WYLACZNIE za:
-  * polaczenie TCP z serwerem autorytatywnym,
-  * wysylanie asynchronicznych zadan gracza (RUCH / BOMBA),
-  * odbieranie i renderowanie stanu planszy otrzymanego z serwera.
-
-Cala logika gry (kolizje, wybuchy, eliminacje, punktacja) liczona jest
-po stronie serwera w jezyku C. Klient nie podejmuje zadnych decyzji o stanie.
-
-Ekrany klienta (maszyna stanow):
-    MENU      -> wybor nazwy gracza, adresu i portu serwera
-    LOBBY     -> lista podlaczonych graczy + przelacznik gotowosci + START
-    PLAYING   -> wlasciwa rozgrywka
-    GAMEOVER  -> ekran zwyciestwa / porazki / remisu + powtorzenie gry
-
-Uruchomienie:
-    python bombit_client.py [host] [port] [nazwa]   # argumenty sa opcjonalne
-Sterowanie w grze:
-    Strzalki / WASD - ruch
-    Spacja          - postaw bombe
-    ESC             - powrot do menu
-"""
 
 import sys
 import socket
 import threading
 import pygame
 
-# ----------------------------- Konfiguracja --------------------------------
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 5000
-TILE = 40                     # rozmiar kafelka w pikselach
-HUD_H = 70                    # wysokosc paska informacyjnego (HUD)
+TILE = 40
+HUD_H = 70
 FPS = 60
-MENU_W, MENU_H = 600, 670     # rozmiar okna w menu / na ekranie koncowym
+MENU_W, MENU_H = 600, 670
 
-# Kolory (styl retro-arcade).
 COL_BG       = (24, 24, 32)
 COL_PANEL    = (32, 34, 44)
 COL_EMPTY    = (40, 44, 52)
@@ -63,27 +37,23 @@ COL_BTN_HI   = (74, 84, 108)
 COL_INPUT    = (44, 48, 60)
 COL_INPUT_HI = (60, 110, 160)
 
-# Kolory graczy wg id (0..3).
 PLAYER_COLORS = [
-    (80, 170, 255),   # niebieski
-    (255, 90, 90),    # czerwony
-    (90, 220, 120),   # zielony
-    (240, 220, 80),   # zolty
+    (80, 170, 255),
+    (255, 90, 90),
+    (90, 220, 120),
+    (240, 220, 80),
 ]
 
 PHASE_NAMES = {0: "OCZEKIWANIE", 1: "GRA", 2: "KONIEC RUNDY"}
 
-# Stany klienta.
 ST_MENU = "MENU"
 ST_LOBBY = "LOBBY"
 ST_PLAYING = "PLAYING"
 ST_GAMEOVER = "GAMEOVER"
 
 
-# --------------------------- Polaczenie sieciowe ---------------------------
 
 class NetworkClient:
-    """Obsluga gniazda TCP w osobnym watku odbiorczym."""
 
     def __init__(self, host, port, name):
         self.host = host
@@ -96,11 +66,10 @@ class NetworkClient:
         self.player_id = None
         self.board_w = 0
         self.board_h = 0
-        self.state = None          # ostatni zdekodowany stan (dict)
+        self.state = None
         self.message = ""
 
     def connect(self):
-        """Nawiazuje polaczenie. Rzuca OSError gdy serwer niedostepny."""
         self.sock = socket.create_connection((self.host, self.port), timeout=5)
         self.sock.settimeout(None)
         self.sock.sendall(f"JOIN {self.name}\n".encode())
@@ -145,7 +114,6 @@ class NetworkClient:
 
     @staticmethod
     def _parse_state(parts):
-        # STATE|tick|phase|W|H|board|bombs|fires|players
         if len(parts) < 9:
             return None
         try:
@@ -182,7 +150,6 @@ class NetworkClient:
         }
 
     def snapshot(self):
-        """Zwraca (state, player_id, message) pod blokada."""
         with self.lock:
             return self.state, self.player_id, self.message
 
@@ -207,7 +174,6 @@ class NetworkClient:
             self.sock = None
 
 
-# ------------------------------ Widgety GUI --------------------------------
 
 class Button:
     def __init__(self, rect, text, font, base=COL_BTN, hi=COL_BTN_HI):
@@ -249,7 +215,7 @@ class TextInput:
             if event.key == pygame.K_BACKSPACE:
                 self.text = self.text[:-1]
             elif event.key in (pygame.K_RETURN, pygame.K_TAB, pygame.K_ESCAPE):
-                pass  # obsluga wyzej
+                pass
             else:
                 ch = event.unicode
                 if ch and ch.isprintable() and len(self.text) < self.max_len:
@@ -272,10 +238,8 @@ class TextInput:
                         self.rect.y + (self.rect.height - txt.get_height()) // 2))
 
 
-# ------------------------------- Renderowanie ------------------------------
 
 def draw_tile_3d(surf, rect, base, hi):
-    """Rysuje kafelek z prostym efektem 3D (jasniejsza krawedz)."""
     pygame.draw.rect(surf, base, rect)
     pygame.draw.rect(surf, hi, rect, 2)
 
@@ -293,7 +257,6 @@ def render_game(screen, font, big_font, net):
     board = state["board"]
     oy = HUD_H
 
-    # Teren.
     for y in range(h):
         for x in range(w):
             ch = board[y * w + x] if y * w + x < len(board) else "."
@@ -306,21 +269,18 @@ def render_game(screen, font, big_font, net):
                 pygame.draw.rect(screen, COL_EMPTY, rect)
                 pygame.draw.rect(screen, COL_GRID, rect, 1)
 
-    # Ogien.
     for (fx, fy) in state["fires"]:
         rect = pygame.Rect(fx * TILE, oy + fy * TILE, TILE, TILE)
         draw_tile_3d(screen, rect, COL_FIRE, COL_FIRE_HI)
 
-    # Bomby.
     for (bx, by, bt) in state["bombs"]:
         cx = bx * TILE + TILE // 2
         cy = oy + by * TILE + TILE // 2
-        r = TILE // 2 - 4 - (bt % 2) * 2     # pulsacja
+        r = TILE // 2 - 4 - (bt % 2) * 2
         pygame.draw.circle(screen, COL_BOMB, (cx, cy), r)
         pygame.draw.circle(screen, COL_BOMB_HI, (cx, cy), r, 2)
         pygame.draw.circle(screen, COL_FIRE, (cx, cy - r), 3)
 
-    # Gracze.
     for p in state["players"]:
         if not p["alive"]:
             continue
@@ -331,7 +291,6 @@ def render_game(screen, font, big_font, net):
         if p["id"] == my_id:
             pygame.draw.rect(screen, COL_TEXT, rect, 2, border_radius=6)
 
-    # HUD: faza, komunikat, tablica wynikow.
     phase_txt = PHASE_NAMES.get(state["phase"], "?")
     hud = font.render(f"Faza: {phase_txt}    {message}", True, COL_TEXT)
     screen.blit(hud, (10, 8))
@@ -347,7 +306,6 @@ def render_game(screen, font, big_font, net):
 
 
 def compute_result(state, my_id):
-    """Okresla wynik rundy z perspektywy gracza my_id."""
     if state is None:
         return "draw"
     alive = [p for p in state["players"] if p["alive"]]
@@ -359,7 +317,6 @@ def compute_result(state, my_id):
     return "defeat"
 
 
-# ------------------------------ Ekran: MENU --------------------------------
 
 class MenuScreen:
     def __init__(self, font, big_font, title_font, defaults):
@@ -424,10 +381,8 @@ class MenuScreen:
         screen.blit(hint, hint.get_rect(center=(MENU_W // 2, 620)))
 
 
-# ------------------------------ Ekran: LOBBY ------------------------------
 
 class LobbyScreen:
-    """Lobby z lista graczy, przelacznikiem gotowosci i przyciskiem START."""
 
     def __init__(self, font, big_font, title_font):
         cx = MENU_W // 2
@@ -480,7 +435,6 @@ class LobbyScreen:
             True, COL_MUTED)
         screen.blit(sub, sub.get_rect(center=(MENU_W // 2, 130)))
 
-        # Lista graczy.
         head = self.big_font.render("Gracze", True, COL_TEXT)
         screen.blit(head, head.get_rect(center=(MENU_W // 2, 180)))
 
@@ -496,7 +450,6 @@ class LobbyScreen:
             y = panel.y + 16
             for p in sorted(players, key=lambda q: q["id"]):
                 col = PLAYER_COLORS[p["id"] % len(PLAYER_COLORS)]
-                # Kolorowy znacznik gracza.
                 pygame.draw.rect(screen, col, (panel.x + 16, y + 4, 26, 26),
                                  border_radius=4)
                 you = "  (TY)" if p["id"] == my_id else ""
@@ -511,18 +464,15 @@ class LobbyScreen:
                             (panel.right - 16 - status_lbl.get_width(), y + 8))
                 y += 38
 
-        # Komunikat z serwera.
         if server_msg:
             msg = self.font.render(server_msg, True, COL_MUTED)
             screen.blit(msg, msg.get_rect(center=(MENU_W // 2, 480)))
 
-        # Przyciski.
         self.ready_btn.text = "Anuluj gotowosc" if me_ready else "Gotowy"
         self.ready_btn.base = (110, 90, 50) if me_ready else (80, 90, 110)
         self.ready_btn.hi = (150, 120, 70) if me_ready else (110, 130, 160)
         self.ready_btn.draw(screen, mouse_pos)
 
-        # START aktywny tylko gdy wszyscy gotowi i jest >= MIN.
         if all_ready:
             self.start_btn.draw(screen, mouse_pos)
         else:
@@ -536,7 +486,6 @@ class LobbyScreen:
         self.leave_btn.draw(screen, mouse_pos)
 
 
-# --------------------------- Ekran: KONIEC GRY -----------------------------
 
 class GameOverScreen:
     def __init__(self, font, big_font, title_font):
@@ -581,7 +530,6 @@ class GameOverScreen:
         title = self.title_font.render(text, True, color)
         screen.blit(title, title.get_rect(center=(MENU_W // 2, 130)))
 
-        # Tablica wynikow.
         head = self.big_font.render("Tablica wynikow", True, COL_TEXT)
         screen.blit(head, head.get_rect(center=(MENU_W // 2, 230)))
         y = 280
@@ -602,7 +550,6 @@ class GameOverScreen:
         self.menu_btn.draw(screen, mouse_pos)
 
 
-# --------------------------------- Main ------------------------------------
 
 def main():
     defaults = {
@@ -623,13 +570,12 @@ def main():
     menu = MenuScreen(font, big_font, title_font, defaults)
     lobby = LobbyScreen(font, big_font, title_font)
     gameover = GameOverScreen(font, big_font, title_font)
-    MIN_PLAYERS_CLIENT = 2     # mirror MIN_PLAYERS z serwera
+    MIN_PLAYERS_CLIENT = 2
 
     state = ST_MENU
     net = None
-    prev_phase = None      # faza z poprzedniej klatki - do wykrycia przejscia
+    prev_phase = None
 
-    # Mapowanie klawiszy ruchu na kierunki serwera.
     move_keys = {
         pygame.K_UP: "UP", pygame.K_w: "UP",
         pygame.K_DOWN: "DOWN", pygame.K_s: "DOWN",
@@ -657,7 +603,6 @@ def main():
             net = None
             return
         menu.error = ""
-        # Poczekaj chwile na WELCOME aby ustalic wymiary planszy.
         for _ in range(100):
             with net.lock:
                 if net.board_w:
@@ -665,7 +610,6 @@ def main():
             pygame.time.delay(20)
         snap, _, _ = net.snapshot()
         prev_phase = snap["phase"] if snap else 0
-        # Po polaczeniu trafiamy do lobby - okno zachowuje rozmiar menu.
         state = ST_LOBBY
 
     running = True
@@ -674,12 +618,10 @@ def main():
         mouse_pos = pygame.mouse.get_pos()
         events = pygame.event.get()
 
-        # --- Globalne zdarzenia ---
         for event in events:
             if event.type == pygame.QUIT:
                 running = False
 
-        # ===================== STAN: MENU =====================
         if state == ST_MENU:
             for event in events:
                 action = menu.handle_event(event)
@@ -689,7 +631,6 @@ def main():
                     running = False
             menu.draw(screen, mouse_pos)
 
-        # ===================== STAN: LOBBY ====================
         elif state == ST_LOBBY:
             snap_state, my_id, server_msg = net.snapshot() if net else (None, None, "")
             players = snap_state["players"] if snap_state else []
@@ -715,7 +656,6 @@ def main():
             if state != ST_LOBBY:
                 continue
 
-            # Utrata polaczenia -> menu z komunikatem.
             if not net or not net.running:
                 if net:
                     net.close()
@@ -725,7 +665,6 @@ def main():
                 state = ST_MENU
                 continue
 
-            # Wykrycie startu rozgrywki: serwer przeszedl WAITING -> PLAYING.
             if snap_state and snap_state["phase"] == 1:
                 prev_phase = 1
                 screen = resize_for_board()
@@ -735,12 +674,10 @@ def main():
             lobby.draw(screen, mouse_pos, snap_state, my_id, server_msg,
                        MIN_PLAYERS_CLIENT)
 
-        # =================== STAN: PLAYING ====================
         elif state == ST_PLAYING:
             for event in events:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        # Powrot do lobby - polaczenie pozostaje aktywne.
                         screen = pygame.display.set_mode((MENU_W, MENU_H))
                         state = ST_LOBBY
                     elif event.key == pygame.K_SPACE:
@@ -752,7 +689,6 @@ def main():
             if state != ST_PLAYING:
                 continue
 
-            # Plynny ruch przy przytrzymaniu klawisza.
             pressed = pygame.key.get_pressed()
             if now - last_move >= move_cooldown:
                 for key, direction in move_keys.items():
@@ -761,7 +697,6 @@ def main():
                         last_move = now
                         break
 
-            # Utrata polaczenia -> powrot do menu z komunikatem.
             if not net or not net.running:
                 if net:
                     net.close()
@@ -773,7 +708,6 @@ def main():
 
             render_game(screen, font, big_font, net)
 
-            # Wykrycie PRZEJSCIA w faze konca rundy -> ekran wyniku.
             snap_state, my_id, _ = net.snapshot()
             if snap_state:
                 cur_phase = snap_state["phase"]
@@ -784,13 +718,10 @@ def main():
                     state = ST_GAMEOVER
                 prev_phase = cur_phase
 
-        # =================== STAN: GAMEOVER ===================
         elif state == ST_GAMEOVER:
             for event in events:
                 action = gameover.handle_event(event)
                 if action == "again":
-                    # Po rundzie serwer wraca do WAITING i zeruje gotowosci -
-                    # gracze musza ponownie nacisnac "Gotowy" w lobby.
                     if net and net.running:
                         snap, _, _ = net.snapshot()
                         prev_phase = snap["phase"] if snap else 0

@@ -20,14 +20,14 @@ queue_push(CommandQueue *q, Command cmd)
 {
     int ok = 0;
 
-    pthread_mutex_lock(&q->mutex);          /* WEJSCIE do sekcji krytycznej */
+    pthread_mutex_lock(&q->mutex);          
     if (q->count < QUEUE_CAP) {
         q->items[q->tail] = cmd;
         q->tail = (q->tail + 1) % QUEUE_CAP;
         q->count++;
         ok = 1;
     }
-    pthread_mutex_unlock(&q->mutex);        /* WYJSCIE z sekcji krytycznej  */
+    pthread_mutex_unlock(&q->mutex);        
 
     return ok;
 }
@@ -37,14 +37,14 @@ queue_pop(CommandQueue *q, Command *out)
 {
     int ok = 0;
 
-    pthread_mutex_lock(&q->mutex);          /* WEJSCIE do sekcji krytycznej */
+    pthread_mutex_lock(&q->mutex);          
     if (q->count > 0) {
         *out = q->items[q->head];
         q->head = (q->head + 1) % QUEUE_CAP;
         q->count--;
         ok = 1;
     }
-    pthread_mutex_unlock(&q->mutex);        /* WYJSCIE z sekcji krytycznej  */
+    pthread_mutex_unlock(&q->mutex);        
 
     return ok;
 }
